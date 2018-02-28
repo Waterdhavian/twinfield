@@ -11,8 +11,6 @@ use PhpTwinfield\InvoiceLine;
 use PhpTwinfield\InvoiceTotals;
 use PhpTwinfield\Mappers\InvoiceMapper;
 use PhpTwinfield\Response\Response;
-use PhpTwinfield\Secure\Connection;
-use PhpTwinfield\Secure\Service;
 
 /**
  * @covers Invoice
@@ -33,18 +31,15 @@ class InvoiceIntegrationTest extends BaseIntegrationTest
     {
         parent::setUp();
 
-        $this->invoiceApiConnector = new InvoiceApiConnector($this->login);
+        $this->invoiceApiConnector = new InvoiceApiConnector($this->connection);
     }
-
     public function testGetInvoiceWorks()
     {
-        $domDocument = new \DOMDocument();
-        $domDocument->loadXML(file_get_contents(realpath(__DIR__ . '/resources/invoiceGetResponse.xml')));
-        $response = new Response($domDocument);
+        $response = Response::fromString(file_get_contents(__DIR__ . '/resources/invoiceGetResponse.xml'));
 
-        $this->client
+        $this->processXmlService
             ->expects($this->once())
-            ->method("sendDOMDocument")
+            ->method("sendDocument")
             ->with($this->isInstanceOf(\PhpTwinfield\Request\Read\Invoice::class))
             ->willReturn($response);
 
@@ -84,9 +79,6 @@ class InvoiceIntegrationTest extends BaseIntegrationTest
         $this->assertSame('0.00', $invoiceLine->getVatValue());
         $this->assertSame('15.00', $invoiceLine->getValueInc());
         $this->assertSame('15.00', $invoiceLine->getUnitsPriceExcl());
-        $this->assertSame('', $invoiceLine->getFreeText1());
-        $this->assertSame('', $invoiceLine->getFreeText2());
-        $this->assertSame('', $invoiceLine->getFreeText3());
         $this->assertSame('8020', $invoiceLine->getDim1());
         $this->assertEquals(PerformanceType::SERVICES(), $invoiceLine->getPerformanceType());
 
@@ -136,9 +128,9 @@ class InvoiceIntegrationTest extends BaseIntegrationTest
         $totals->setValueInc('15.00');
         $invoice->setTotals($totals);
 
-        $this->client
+        $this->processXmlService
             ->expects($this->once())
-            ->method("sendDOMDocument")
+            ->method("sendDocument")
             ->with($this->isInstanceOf(InvoicesDocument::class))
             ->willReturnCallback(function (InvoicesDocument $invoicesDocument): Response {
                 $this->assertXmlStringEqualsXmlString(
@@ -150,5 +142,14 @@ class InvoiceIntegrationTest extends BaseIntegrationTest
             });
 
         $this->invoiceApiConnector->send($invoice);
+    }
+
+    protected function getSuccessfulResponse(): Response
+    {
+        return Response::fromString(
+            '<salesinvoices result="1">
+                <salesinvoice result="1" />
+            </salesinvoices>'
+        );
     }
 }

@@ -1,11 +1,6 @@
 # Twinfield  [![Build Status](https://travis-ci.org/php-twinfield/twinfield.svg?branch=master)](http://travis-ci.org/php-twinfield/twinfield)
 A PHP library for Twinfield Integration.
-Use the Twinfield SOAP Service to have your PHP application communicate directly with your Twinfield account.
-
-> :warning: This library is still under construction. [Version 1](https://github.com/php-twinfield/twinfield/tree/release-1.0) is available from Composer, but we recommend you to wait for (or help with!) version 2. We hope to release it early 2018.
-
----
-
+Use the Twinfield SOAP Services to have your PHP application communicate directly with your Twinfield account.
 
 ## Installation
 
@@ -19,37 +14,42 @@ composer require 'php-twinfield/twinfield:^2.0'
 ## Usage
 
 ### Authentication
-You need to set up a `\PhpTwinfield\Secure\Config` class with your credentials. An example using basic username and
-password authentication:
+You need to set up a `\PhpTwinfield\Secure\AuthenticatedConnection` class with your credentials. When using basic 
+username and password authentication, the `\PhpTwinfield\Secure\WebservicesAuthentication` class should be used, as follows:
 
 ```php
-$config = new Secure\Config();
-$config->setCredentials('Username', 'Password', 'Organization');
+$connection = new Secure\WebservicesAuthentication("username", "password", "organization");
 ```
 
-Another example, using OAuth:
+In order to use OAuth2 to authenticate with Twinfield, one should use the `\PhpTwinfield\Secure\Provider\OAuthProvider` to retrieve an `\League\OAuth2\Client\Token\AccessToken` object, and extract the refresh token from this object. Furthermore, it is required to set up a default `\PhpTwinfield\Office`, that will be used during requests to Twinfield. **Please note:** when a different office is specified when sending a request through one of the `ApiConnectors`, this Office will override the default.
+
+Using this information, we can create an instance of the `\PhpTwinfield\Secure\OpenIdConnectAuthentication` class, as follows:
 
 ```php
-$config = new Secure\Config();
+$provider    = new OAuthProvider([
+    'clientId'     => 'someClientId',
+    'clientSecret' => 'someClientSecret',
+    'redirectUri'  => 'https://example.org/'
+]);
+$accessToken  = $provider->getAccessToken("authorization_code", ["code" => ...]);
+$refreshToken = $accessToken->getRefreshToken();
+$office       = \PhpTwinfield\Office::fromCode("someOfficeCode");
 
-// The true parameter at the end tells the system to automatically redirect to twinfield to login.
-$config->setOAuthParameters('clientID', 'clientSecret', 'returnURL', 'Organization', true);
+$connection  = new \PhpTwinfield\Secure\OpenIdConnectAuthentication($provider, $refreshToken, $office);
 ```
-
-The `Secure\Config` object should be passed to a `Secure\Connection` object which will handle the 
-authentication and connection management for the API.   
+For more information about retrieving the initial `AccessToken`, please refer to: https://github.com/thephpleague/oauth2-client#usage
 
 ### Getting data from the API
 In order to communicate with the Twinfield API, you need to create an `ApiConnector` instance for the corresponding
 resource and use the `get()` or `list()` method.
 
-The `ApiConnector` takes a `Secure\Connection` object:  
+The `ApiConnector` takes a `Secure\AuthenticatedConnection` object:  
 
 An example:
 
 ```php
 
-$connection = new Secure\Connection($config);
+$connection = new Secure\WebservicesAuthentication("username", "password", "organization");
 $customerApiConnector = new ApiConnectors\CustomerApiConnector($connection);
 
 // Get one customer.
@@ -71,7 +71,6 @@ $customer = new Customer();
 $customer
     ->setCode('1001')
     ->setName('John Doe')
-    ->setType('DEB')
     ->setOffice($office)
     ->setEBilling(false);
 
@@ -97,19 +96,19 @@ You can also send multiple objects in one batch, chunking is handled automatical
 Not all resources from the Twinfield API are currently implemented. Feel free to create a pull request when you need
 support for another resource.
 
-| Component                                                                                                       | get()              | listAll()          | send()             | Mapper             |
-| --------------------------------------------------------------------------------------------------------------- | :----------------: | :----------------: | :----------------: | :----------------: |
-| [Articles](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Articles)                  | :white_check_mark: |                    | :white_check_mark: | :white_check_mark: |
-| [BankTransaction](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Transactions/BankTransactions)|                  |                    | :white_check_mark: |                    |
-| [Customer](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Customers)                 | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| [Electronic Bank Statements](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Transactions/BankStatements)|         |                    | :white_check_mark: |                    |
-| [Sales Invoices](https://c3.twinfield.com/webservices/documentation/#/ApiReference/SalesInvoices)               | :white_check_mark: |                    | :white_check_mark: | :white_check_mark: |
-| [Matching](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Miscellaneous/Matching)            |                    |                    | :white_check_mark: |                    |
-| [Offices](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Offices)                    |                    | :white_check_mark: |                    |                    |
-| [Suppliers](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Suppliers)                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Transactions:<br> [Purchase](https://c3.twinfield.com/webservices/documentation/#/ApiReference/PurchaseTransactions), [Sale](https://c3.twinfield.com/webservices/documentation/#/ApiReference/SalesTransactions), [Journal](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Transactions/JournalTransactions) | :white_check_mark: |                    | :white_check_mark: | :white_check_mark: |
-| [Users](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Users)                        |                    | :white_check_mark: |                    |                    |
-| [Vat types](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/VAT)                      |                    | :white_check_mark: |                    |                    |
+| Component                                                                                                       | get()              | listAll()          | send()             | delete()           |  Mapper             |
+| --------------------------------------------------------------------------------------------------------------- | :----------------: | :----------------: | :----------------: | :----------------: | :----------------: |
+| [Articles](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Articles)                  | :white_check_mark: |                    | :white_check_mark: |                    | :white_check_mark: |
+| [BankTransaction](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Transactions/BankTransactions)|                  |                    | :white_check_mark: | :white_check_mark: |                    |
+| [Customer](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Customers)                 | :white_check_mark: | :white_check_mark: | :white_check_mark: |                    | :white_check_mark: |
+| [Electronic Bank Statements](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Transactions/BankStatements)|         |                    | :white_check_mark: |                    |                    |
+| [Sales Invoices](https://c3.twinfield.com/webservices/documentation/#/ApiReference/SalesInvoices)               | :white_check_mark: |                    | :white_check_mark: |                    | :white_check_mark: |
+| [Matching](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Miscellaneous/Matching)            |                    |                    | :white_check_mark: |                    | :white_check_mark: |                    |
+| [Offices](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Offices)                    |                    | :white_check_mark: |                    |                    |                    |
+| [Suppliers](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Suppliers)                | :white_check_mark: | :white_check_mark: | :white_check_mark: |                    | :white_check_mark: |
+| Transactions:<br> [Purchase](https://c3.twinfield.com/webservices/documentation/#/ApiReference/PurchaseTransactions), [Sale](https://c3.twinfield.com/webservices/documentation/#/ApiReference/SalesTransactions), [Journal](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Transactions/JournalTransactions) | :white_check_mark: |                    | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| [Users](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/Users)                        |                    | :white_check_mark: |                    |                    |                    |
+| [Vat types](https://c3.twinfield.com/webservices/documentation/#/ApiReference/Masters/VAT)                      |                    | :white_check_mark: |                    |                    |                    |
  
 
 ## Links
@@ -123,3 +122,4 @@ support for another resource.
 * [Mollie](https://www.mollie.com/)
 * [Remco Tolsma](https://www.remcotolsma.nl/)
 * [Emile Bons](http://www.emilebons.nl/)
+* [Alex Jeensma](http://vontis.nl/)

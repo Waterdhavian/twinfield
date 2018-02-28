@@ -2,59 +2,73 @@
 
 namespace PhpTwinfield\Mappers;
 
-use MyCLabs\Enum\Enum;
+use Money\Currency;
+use PhpTwinfield\Office;
 use PhpTwinfield\Util;
+use Webmozart\Assert\Assert;
 
 abstract class BaseMapper
 {
     /**
-     * Set a property on an object using a setter from a tag within the element.
-     *
-     * @param \DOMNode $node
-     * @param string $tag
-     * @param callable $setter Must be in the array($object, $method) syntax where method takes one argument.
+     * @throws \PhpTwinfield\Exception
      */
-    protected static function setFromTagUsingCallable(\DOMNode $node, string $tag, callable $setter): void
+    protected static function setFromTagValue(\DOMDocument $document, string $tag, callable $setter): void
     {
-        /** @var \DOMNode|\DOMDocument $node */
-        $element = $node->getElementsByTagName($tag)->item(0);
+        $value = self::getValueFromTag($document, $tag);
 
-        if (empty($element)) {
+        if ($value === null) {
             return;
         }
 
-        $contents = $element->textContent;
-
-        if ($contents === null) {
+        if ($tag === "office") {
+            \call_user_func($setter, Office::fromCode($value));
             return;
         }
 
-        $contents = self::transformContent(new \ReflectionMethod(...$setter), $contents);
+        if ($tag === "date") {
+            \call_user_func($setter, Util::parseDate($value));
+            return;
+        }
 
-        call_user_func($setter, $contents);
+        if ($tag === "startvalue") {
+            $currency = new Currency(self::getValueFromTag($document, "currency"));
+
+            \call_user_func($setter, Util::parseMoney($value, $currency));
+
+            return;
+        }
+
+        \call_user_func($setter, $value);
     }
 
-    private static function transformContent(\ReflectionMethod $reflectionMethod, string $contents)
+    protected static function getValueFromTag(\DOMDocument $document, string $tag): ?string
     {
-        [$parameter] = $reflectionMethod->getParameters();
+        /** @var \DOMNodeList $nodelist */
+        $nodelist = $document->getElementsByTagName($tag);
 
-        if ($parameter->getType() === null) {
-            /*
-             * No typehint, just return the string.
-             */
-            return $contents;
+        if ($nodelist->length === 0) {
+            return null;
         }
 
-        $parameter_class = $parameter->getType()->getName();
+        Assert::greaterThanEq($nodelist->length, 1);
 
-        if (is_subclass_of($parameter_class, Enum::class)) {
-            return new $parameter_class($contents);
+        /** @var \DOMElement $element */
+        $element = $nodelist[0];
+
+        if ("" === $element->textContent) {
+            return null;
         }
 
-        if ($parameter_class == \DateTimeInterface::class && !empty($contents)) {
-            return Util::parseDate($contents);
+        return $element->textContent;
+    }
+
+    protected static function getField(\DOMElement $element, string $fieldTagName): ?string
+    {
+        $fieldElement = $element->getElementsByTagName($fieldTagName)->item(0);
+        if (!isset($fieldElement)) {
+            return null;
         }
 
-        return $contents;
+        return $fieldElement->textContent;
     }
 }
